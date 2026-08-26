@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=3D Pipes Settings
+GenericName=3D Pipes Settings
+Comment=Configure 3D Pipes — pipe count, thickness, reset interval, and more
+Keywords=screensaver;pipes;opengl;settings;
+Exec=@ROOT@/start.sh --settings
+TryExec=@ROOT@/start.sh
+Icon=@ROOT@/share/icon.svg
+Terminal=false
+Categories=Graphics;Amusement;Settings;
+StartupNotify=true
+X-KDE-StartupNotify=true
