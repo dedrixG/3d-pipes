@@ -6,7 +6,6 @@ import argparse
 import faulthandler
 import json
 import math
-import os
 import random
 import sys
 import time
@@ -26,12 +25,15 @@ from PySide6.QtGui import (
     QCursor,
     QGuiApplication,
     QIcon,
+    QKeySequence,
     QMatrix4x4,
     QOpenGLFunctions,
     QQuaternion,
+    QShortcut,
     QSurfaceFormat,
     QVector3D,
     QVector4D,
+    QWindow,
 )
 from PySide6.QtOpenGL import (
     QOpenGLBuffer,
@@ -57,15 +59,41 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cover_screens import format_cover_plan, iter_cover_screens
+from platform_paths import (
+    APP_DISPLAY_NAME,
+    APP_NAME,
+    APP_VERSION,
+    apply_app_identity,
+    config_path,
+    configure_opengl_env,
+    migrate_legacy_config,
+    peek_multisample,
+    state_dir,
+)
+
 CELL = 1.0
 GRID = 16
 MAX_PIECES = 520
 STRAIGHT_BIAS = 0.78
-JOIN_OVERLAP = 0.16
-ROOT = Path(__file__).resolve().parent
-CONFIG_DIR = Path.home() / ".config" / "pipes-screensaver"
-CONFIG_PATH = CONFIG_DIR / "config.json"
-STATE_DIR = Path.home() / ".local" / "state" / "pipes-screensaver"
+
+
+def _app_root() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+
+ROOT = _app_root()
+
+
+def _log(msg: str) -> None:
+    """print() can throw in a windowed/frozen Windows process if stdio is gone."""
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
+
 
 DEFAULTS = {
     "pipe_count": 3,
@@ -100,19 +128,32 @@ DIRS = (
 )
 Y_UP = QVector3D(0, 1, 0)
 
+# Key light is fixed in world space, coming from screen-left at the
+# starting camera pose. It does not follow the camera, so highlights
+# crawl around the pipes as the view orbits.
+_CAM0_ANGLE = 0.55
+_CAM0_ELEV = 0.42
+_CAM0_FWD = QVector3D(
+    -math.cos(_CAM0_ELEV) * math.sin(_CAM0_ANGLE),
+    -math.sin(_CAM0_ELEV),
+    -math.cos(_CAM0_ELEV) * math.cos(_CAM0_ANGLE),
+)
+_CAM0_RIGHT = QVector3D.crossProduct(_CAM0_FWD, Y_UP).normalized()
+KEY_LIGHT = (-_CAM0_RIGHT * 0.92 + Y_UP * 0.38).normalized()
+FILL_LIGHT = (_CAM0_RIGHT * 0.50 + Y_UP * 0.12 - _CAM0_FWD * 0.18).normalized()
+
 VERT = """
 #version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 uniform mat4 uMVP;
 uniform mat4 uModel;
-uniform mat3 uNormal;
 out vec3 vN;
 out vec3 vW;
 void main() {
     vec4 world = uModel * vec4(aPos, 1.0);
     vW = world.xyz;
-    vN = normalize(uNormal * aNormal);
+    vN = transpose(inverse(mat3(uModel))) * aNormal;
     gl_Position = uMVP * vec4(aPos, 1.0);
 }
 """
@@ -124,17 +165,22 @@ in vec3 vW;
 uniform vec3 uColor;
 uniform vec3 uEye;
 uniform vec3 uLight;
+uniform vec3 uFill;
 out vec4 FragColor;
 void main() {
     vec3 n = normalize(vN);
     if (!gl_FrontFacing) n = -n;
     vec3 l = normalize(uLight);
+    vec3 f = normalize(uFill);
     vec3 v = normalize(uEye - vW);
     vec3 h = normalize(l + v);
-    float diff = max(dot(n, l), 0.0);
-    float spec = pow(max(dot(n, h), 0.0), 56.0);
-    float fill = max(dot(n, normalize(vec3(-0.4, -0.1, -0.3))), 0.0) * 0.22;
-    vec3 col = uColor * (0.22 + diff * 0.80 + fill) + vec3(1.0) * spec * 0.55;
+    float ndl = dot(n, l);
+    float lambert = max(ndl, 0.0);
+    float wrap = max(ndl + 0.45, 0.0) / 1.45;
+    float diff = mix(lambert, wrap * wrap, 0.55);
+    float fill = max(dot(n, f), 0.0) * 0.28;
+    float spec = pow(max(dot(n, h), 0.0), 28.0) * lambert;
+    vec3 col = uColor * (0.16 + diff * 0.86 + fill) + vec3(1.0) * spec * 0.48;
     FragColor = vec4(col, 1.0);
 }
 """
@@ -162,8 +208,9 @@ def sanitize_config(raw: dict | None) -> dict:
 
 
 def load_config() -> dict:
+    path = config_path()
     try:
-        return sanitize_config(json.loads(CONFIG_PATH.read_text()))
+        return sanitize_config(json.loads(path.read_text()))
     except FileNotFoundError:
         return dict(DEFAULTS)
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
@@ -172,10 +219,11 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> None:
     cfg = sanitize_config(cfg)
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CONFIG_PATH.with_suffix(".json.tmp")
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cfg, indent=2) + "\n")
-    tmp.replace(CONFIG_PATH)
+    tmp.replace(path)
 
 
 def _v(a) -> QVector3D:
@@ -204,7 +252,7 @@ def dir_eq(a, b) -> bool:
 def cylinder_model(p0: QVector3D, p1: QVector3D, radius: float) -> QMatrix4x4 | None:
     d = p1 - p0
     length = d.length()
-    if length < 1e-5:
+    if length < 0.08:
         return None
     mid = (p0 + p1) * 0.5
     m = QMatrix4x4()
@@ -241,24 +289,6 @@ def elbow_model(cell, from_dir, to_dir) -> QMatrix4x4:
     return m
 
 
-def _disc_cap(verts, idx, y: float, ny: float, slices: int) -> None:
-    center = len(verts)
-    verts.append((0.0, y, 0.0, 0.0, ny, 0.0))
-    ring = []
-    for i in range(slices):
-        a = 2.0 * math.pi * i / slices
-        x, z = math.cos(a), math.sin(a)
-        ring.append(len(verts))
-        verts.append((x, y, z, 0.0, ny, 0.0))
-    for i in range(slices):
-        a = ring[i]
-        b = ring[(i + 1) % slices]
-        if ny >= 0.0:
-            idx.extend((center, a, b))
-        else:
-            idx.extend((center, b, a))
-
-
 def make_cylinder(slices: int = 32):
     verts = []
     idx = []
@@ -273,8 +303,6 @@ def make_cylinder(slices: int = 32):
         i2 = i0 + 2
         i3 = i0 + 3
         idx.extend((i0, i2, i1, i1, i2, i3))
-    _disc_cap(verts, idx, -0.5, -1.0, slices)
-    _disc_cap(verts, idx, 0.5, 1.0, slices)
     return (
         np.array(verts, dtype=np.float32),
         np.array(idx, dtype=np.uint32),
@@ -307,7 +335,7 @@ def make_sphere(slices: int = 24, stacks: int = 16):
     )
 
 
-def make_elbow(major: float, tube: float, radial: int = 20, tubular: int = 20):
+def make_elbow(major: float, tube: float, radial: int = 24, tubular: int = 28):
     verts = []
     idx = []
     arc = math.pi / 2.0
@@ -320,9 +348,9 @@ def make_elbow(major: float, tube: float, radial: int = 20, tubular: int = 20):
             cx = (major + tube * cv) * cu
             cy = (major + tube * cv) * su
             cz = tube * sv
-            nx = cv * cu
-            ny = cv * su
-            nz = sv
+            nx = -cv * cu
+            ny = -cv * su
+            nz = -sv
             verts.append((cx, cy, cz, nx, ny, nz))
     cols = radial + 1
     for i in range(tubular):
@@ -330,34 +358,6 @@ def make_elbow(major: float, tube: float, radial: int = 20, tubular: int = 20):
             a = i * cols + j
             b = a + cols
             idx.extend((a, b, a + 1, a + 1, b, b + 1))
-
-    def elbow_cap(u: float, normal: tuple[float, float, float]) -> None:
-        cu, su = math.cos(u), math.sin(u)
-        nx, ny, nz = normal
-        center = len(verts)
-        verts.append((major * cu, major * su, 0.0, nx, ny, nz))
-        ring = []
-        for j in range(radial):
-            v = 2.0 * math.pi * j / radial
-            cv, sv = math.cos(v), math.sin(v)
-            ring.append(len(verts))
-            verts.append(
-                (
-                    (major + tube * cv) * cu,
-                    (major + tube * cv) * su,
-                    tube * sv,
-                    nx,
-                    ny,
-                    nz,
-                )
-            )
-        for j in range(radial):
-            a = ring[j]
-            b = ring[(j + 1) % radial]
-            idx.extend((center, a, b))
-
-    elbow_cap(0.0, (0.0, -1.0, 0.0))
-    elbow_cap(arc, (-1.0, 0.0, 0.0))
     return (
         np.array(verts, dtype=np.float32),
         np.array(idx, dtype=np.uint32),
@@ -475,21 +475,6 @@ class Pipe:
     def add_elbow(self, cell, from_dir, to_dir) -> DrawItem:
         item = DrawItem("elbow", elbow_model(cell, from_dir, to_dir), self.color)
         self.items.append(item)
-        c = cell_world(cell)
-        h = CELL * 0.5
-        plug = self.radius * 1.06
-        p_in = QVector3D(
-            c.x() - from_dir[0] * h,
-            c.y() - from_dir[1] * h,
-            c.z() - from_dir[2] * h,
-        )
-        p_out = QVector3D(
-            c.x() + to_dir[0] * h,
-            c.y() + to_dir[1] * h,
-            c.z() + to_dir[2] * h,
-        )
-        self.items.append(DrawItem("sphere", sphere_model(p_in, plug), self.color))
-        self.items.append(DrawItem("sphere", sphere_model(p_out, plug), self.color))
         return item
 
     def _set_cyl(self, item: DrawItem, p0: QVector3D, p1: QVector3D) -> None:
@@ -509,10 +494,10 @@ class Pipe:
     def begin_segment(self, b, dir_in, dir_out, joint) -> None:
         origin = QVector3D(self.last_exit)
         b_world = cell_world(b)
-        overlap = min(JOIN_OVERLAP, self.radius * 0.55)
         if joint == "elbow":
-            hin = _v(dir_in) * (CELL * 0.5 - overlap)
-            hout = _v(dir_out) * (CELL * 0.5 - overlap)
+            inset = 0.03
+            hin = _v(dir_in) * (CELL * 0.5 - inset)
+            hout = _v(dir_out) * (CELL * 0.5 - inset)
             entry = b_world - hin
             exit_p = b_world + hout
         else:
@@ -550,14 +535,19 @@ class Pipe:
         if g is None:
             return
         self._set_cyl(g["item"], g["shaft_from"], g["to"])
+        self.last_exit = QVector3D(g["exit"])
         if g["joint"] == "ball":
             self.add_ball(g["cell"])
             self.shaft = None
+            if self.tip is not None:
+                self.tip.visible = False
         elif g["joint"] == "elbow":
             self.add_elbow(g["cell"], g["dir_in"], g["dir_out"])
             self.shaft = None
-        self.last_exit = QVector3D(g["exit"])
-        self._place_tip(self.last_exit)
+            if self.tip is not None:
+                self.tip.visible = False
+        else:
+            self._place_tip(self.last_exit)
         self.growing = None
 
     def candidates(self, from_cell, incoming):
@@ -646,8 +636,8 @@ class PipesSim(QObject):
         self.world = Occupancy()
         self.items: list[DrawItem] = []
         self.pipes: list[Pipe] = []
-        self.cam_angle = 0.55
-        self.cam_elev = 0.42
+        self.cam_angle = _CAM0_ANGLE
+        self.cam_elev = _CAM0_ELEV
         self.reset_at = 0.0
         self.started_at = 0.0
         self.last_t = time.perf_counter()
@@ -836,17 +826,16 @@ class PipesWidget(QOpenGLWidget):
         self.sim.start()
         self._ready = True
         fmt = ctx.format()
-        print(
+        _log(
             f"3D Pipes  OpenGL ready  {fmt.majorVersion()}.{fmt.minorVersion()}  "
-            f"samples={fmt.samples()}",
-            flush=True,
+            f"samples={fmt.samples()}"
         )
 
     def _rebuild_elbow(self) -> None:
         old = self.meshes.pop("elbow", None)
         if old is not None:
             old.destroy()
-        self.meshes["elbow"] = Mesh(*make_elbow(CELL * 0.5, self.sim.radius * 1.04), self.prog)
+        self.meshes["elbow"] = Mesh(*make_elbow(CELL * 0.5, self.sim.radius), self.prog)
         self._elbow_radius = self.sim.radius
 
     def resizeGL(self, w: int, h: int) -> None:
@@ -886,7 +875,8 @@ class PipesWidget(QOpenGLWidget):
 
         self.prog.bind()
         self.prog.setUniformValue("uEye", eye)
-        self.prog.setUniformValue("uLight", QVector3D(0.45, 0.82, 0.40).normalized())
+        self.prog.setUniformValue("uLight", KEY_LIGHT)
+        self.prog.setUniformValue("uFill", FILL_LIGHT)
 
         for item in self.sim.items:
             if not item.visible:
@@ -894,7 +884,6 @@ class PipesWidget(QOpenGLWidget):
             mvp = proj * view * item.model
             self.prog.setUniformValue("uMVP", mvp)
             self.prog.setUniformValue("uModel", item.model)
-            self.prog.setUniformValue("uNormal", item.model.normalMatrix())
             self.prog.setUniformValue("uColor", item.color)
             mesh = self.meshes.get(item.kind)
             if mesh is not None:
@@ -903,57 +892,96 @@ class PipesWidget(QOpenGLWidget):
         self.prog.release()
 
     def keyPressEvent(self, event) -> None:
-        if not self.windowed:
-            return
-        key = event.key()
-        if key == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             win = self.window()
-            if isinstance(win, PreviewWindow) and win.settings_visible():
+            if self.windowed and isinstance(win, PreviewWindow) and win.settings_visible():
                 win.set_settings_visible(False)
                 return
             QApplication.quit()
-        elif key == Qt.Key.Key_Space:
+            return
+        if not self.windowed:
+            return
+        if event.key() == Qt.Key.Key_Space:
             self.sim.restart()
-        elif key == Qt.Key.Key_S:
+        elif event.key() == Qt.Key.Key_S:
             win = self.window()
             if isinstance(win, PreviewWindow):
                 win.toggle_settings()
 
 
 class ScreensaverGuard(QObject):
-    """Ignore the click that launched us; quit only on real input after a short grace."""
+    """Quit on real input. Ignore launch click, compositor jitter, and tiny touchpad ticks."""
 
-    def __init__(self, grace_s: float = 2.8, parent=None):
+    _MOVE_PX = 48
+    _MODIFIERS = {
+        Qt.Key.Key_Shift,
+        Qt.Key.Key_Control,
+        Qt.Key.Key_Alt,
+        Qt.Key.Key_Meta,
+        Qt.Key.Key_AltGr,
+        Qt.Key.Key_Super_L,
+        Qt.Key.Key_Super_R,
+        Qt.Key.Key_Hyper_L,
+        Qt.Key.Key_Hyper_R,
+        Qt.Key.Key_CapsLock,
+        Qt.Key.Key_NumLock,
+        Qt.Key.Key_ScrollLock,
+    }
+
+    def __init__(self, grace_s: float = 5.0, parent=None):
         super().__init__(parent)
-        self.armed_at = time.perf_counter() + grace_s
+        self.armed = False
         self.origin = None
+        self._done = False
+        QTimer.singleShot(int(grace_s * 1000), self._arm)
+
+    def _arm(self) -> None:
+        self.armed = True
+        self.origin = None
+        _log("3D Pipes  input armed (move the mouse or press a key to exit)")
+
+    def _exit(self, reason: str) -> bool:
+        if self._done:
+            return True
+        self._done = True
+        _log(f"3D Pipes  exit ({reason})")
+        QApplication.quit()
+        return True
 
     def eventFilter(self, obj, event) -> bool:
-        et = event.type()
-        if et not in (
-            QEvent.Type.KeyPress,
-            QEvent.Type.MouseButtonPress,
-            QEvent.Type.MouseMove,
-            QEvent.Type.Wheel,
-        ):
+        if self._done:
             return False
-        now = time.perf_counter()
+        et = event.type()
+        if et in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride):
+            key = event.key()
+            if key == Qt.Key.Key_Escape and not getattr(event, "isAutoRepeat", lambda: False)():
+                return self._exit("escape")
+        if not self.armed:
+            return False
         if et == QEvent.Type.MouseMove:
             pos = event.globalPosition()
             if self.origin is None:
                 self.origin = pos
-            if now < self.armed_at:
                 return False
             dx = pos.x() - self.origin.x()
             dy = pos.y() - self.origin.y()
-            if dx * dx + dy * dy >= 64.0:
-                QApplication.quit()
-                return True
+            if dx * dx + dy * dy >= self._MOVE_PX * self._MOVE_PX:
+                return self._exit(f"mouse moved {dx:.0f},{dy:.0f}")
             return False
-        if now < self.armed_at:
-            return False
-        QApplication.quit()
-        return True
+        if et == QEvent.Type.MouseButtonPress:
+            return self._exit("mouse click")
+        if et == QEvent.Type.KeyPress:
+            if event.isAutoRepeat():
+                return False
+            if event.key() in self._MODIFIERS:
+                return False
+            return self._exit(f"key {int(event.key())}")
+        if et == QEvent.Type.Wheel:
+            delta = event.angleDelta()
+            if abs(delta.x()) + abs(delta.y()) < 120:
+                return False
+            return self._exit("wheel")
+        return False
 
 
 class SettingsPanel(QFrame):
@@ -1186,24 +1214,85 @@ class CoverWindow(QWidget):
     def __init__(self, sim: PipesSim, screen):
         super().__init__()
         self.screen_ref = screen
-        self.setWindowFlags(
+        flags = (
             Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
         )
+        self.setWindowFlags(flags)
         self.setCursor(QCursor(Qt.CursorShape.BlankCursor))
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.view = PipesWidget(sim, windowed=False)
         layout.addWidget(self.view)
 
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            QApplication.quit()
+            return
+        super().keyPressEvent(event)
+
+    def _win32_topmost(self) -> None:
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            user32 = _win32_user32()
+            hwnd = int(self.winId())
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos(
+                hwnd,
+                ctypes.c_void_p(-1),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            )
+        except Exception:
+            pass
+
     def place(self) -> None:
-        self.show()
-        handle = self.windowHandle()
-        if handle is not None:
-            handle.setScreen(self.screen_ref)
-        self.setGeometry(self.screen_ref.geometry())
-        self.showFullScreen()
+        screen = self.screen_ref
+        try:
+            geo = screen.geometry()
+        except Exception:
+            return
+        if geo.width() < 1 or geo.height() < 1:
+            return
+        self.setGeometry(geo)
+        if sys.platform == "win32":
+            # createWinId() before show() leaves a mapped-but-invisible
+            # fullscreen window on Win32. Show first, then pin topmost.
+            self.showFullScreen()
+            handle = self.windowHandle()
+            if handle is not None:
+                handle.setScreen(screen)
+            self.raise_()
+            self.activateWindow()
+            self._win32_topmost()
+        else:
+            # Wayland: native handle first so setScreen works before expose.
+            self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+            self.createWinId()
+            handle = self.windowHandle()
+            if handle is not None:
+                handle.setScreen(screen)
+            self.setGeometry(geo)
+            self.showFullScreen()
+            handle = self.windowHandle()
+            if handle is not None and handle.screen() is not screen:
+                handle.setScreen(screen)
+                self.showFullScreen()
+            self.raise_()
+        _log(
+            f"3D Pipes  covering {screen.name()} "
+            f"{geo.x()},{geo.y()} {geo.width()}x{geo.height()}"
+        )
         self.view.setFocus()
 
 
@@ -1224,35 +1313,247 @@ def configure_surface(multisample: bool) -> None:
     QSurfaceFormat.setDefaultFormat(make_surface_format(multisample))
 
 
+def _scr_token(raw: str) -> tuple[str, str | None]:
+    """Split `/c:1234` into (`/c`, `1234`). Plain `/c` has no hwnd."""
+    if len(raw) < 2 or raw[0] not in "/-":
+        return raw.lower(), None
+    body = raw[1:]
+    if not body:
+        return raw.lower(), None
+    if ":" in body:
+        flag, hwnd = body.split(":", 1)
+        return (raw[0] + flag).lower(), hwnd
+    return raw.lower(), None
+
+
+def _looks_like_hwnd(token: str) -> bool:
+    if not token or token.startswith(("/", "-")):
+        return False
+    try:
+        int(token, 0)
+        return True
+    except ValueError:
+        return False
+
+
+def _take_following_hwnd(argv: list[str], i: int) -> tuple[str, int]:
+    if i + 1 < len(argv) and _looks_like_hwnd(argv[i + 1]):
+        return argv[i + 1], i + 1
+    return "0", i
+
+
+def normalize_screensaver_argv(argv: list[str]) -> list[str]:
+    """Map Windows .scr flags (/s /c /p) onto the GNU options.
+
+    Control Panel may pass `/c 12345` (two tokens) or `/c:12345`. The HWND
+    after `/c` or `/a` must be consumed or argparse treats it as unknown.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(argv):
+        raw = argv[i]
+        flag, attached = _scr_token(raw)
+        if flag in ("/s", "-s"):
+            out.append("--fullscreen")
+            if attached is None:
+                _, i = _take_following_hwnd(argv, i)
+        elif flag in ("/c", "-c"):
+            out.append("--settings")
+            if attached is None:
+                _, i = _take_following_hwnd(argv, i)
+        elif flag in ("/p", "-p", "/l", "-l"):
+            hwnd = attached if attached is not None else None
+            if hwnd is None:
+                hwnd, i = _take_following_hwnd(argv, i)
+            out.extend(("--preview", hwnd or "0"))
+        elif flag in ("/a", "-a"):
+            if attached is None:
+                _, i = _take_following_hwnd(argv, i)
+        else:
+            out.append(raw)
+        i += 1
+    return out
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    raw = sys.argv[1:] if argv is None else list(argv)
+    raw = normalize_screensaver_argv(raw)
     p = argparse.ArgumentParser(description="3D Pipes screensaver")
+    p.add_argument("--version", action="version", version=f"{APP_DISPLAY_NAME} {APP_VERSION}")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--window", action="store_true", help="windowed preview")
     mode.add_argument("--settings", action="store_true", help="windowed preview with settings open")
     mode.add_argument("--fullscreen", action="store_true", help="cover every monitor (default)")
-    return p.parse_args(argv)
+    mode.add_argument(
+        "--preview",
+        nargs="?",
+        const="0",
+        default=None,
+        metavar="HWND",
+        help="embed into the Windows Display Settings preview HWND",
+    )
+    p.add_argument(
+        "--dump-screens",
+        action="store_true",
+        help="print the fullscreen cover plan and exit",
+    )
+    return p.parse_args(raw)
+
+
+_FAULT_LOG = None
 
 
 def enable_crash_log() -> None:
+    global _FAULT_LOG
     try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        log = open(STATE_DIR / "faulthandler.log", "a", buffering=1)
-        faulthandler.enable(file=log, all_threads=True)
-    except OSError:
-        faulthandler.enable()
+        if sys.stderr is not None:
+            faulthandler.enable()
+    except Exception:
+        pass
+    try:
+        path = state_dir()
+        path.mkdir(parents=True, exist_ok=True)
+        _FAULT_LOG = open(path / "faulthandler.log", "a", buffering=1)
+        faulthandler.enable(file=_FAULT_LOG, all_threads=True)
+    except (OSError, RuntimeError, ValueError):
+        pass
+
+
+def _win32_user32():
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    user32.SetParent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.SetParent.restype = ctypes.c_void_p
+    user32.IsWindow.argtypes = [ctypes.c_void_p]
+    user32.IsWindow.restype = ctypes.c_int
+    user32.GetClientRect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetClientRect.restype = ctypes.c_int
+    user32.MoveWindow.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    user32.MoveWindow.restype = ctypes.c_int
+    user32.SetWindowPos.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint,
+    ]
+    user32.SetWindowPos.restype = ctypes.c_int
+    user32.GetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    user32.GetWindowLongPtrW.restype = ctypes.c_void_p
+    user32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    user32.SetWindowLongPtrW.restype = ctypes.c_void_p
+    return user32
+
+
+def _parse_hwnd(hwnd_s: str) -> int:
+    try:
+        return int(str(hwnd_s), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _embed_into_hwnd(win: QWidget, hwnd: int) -> bool:
+    """Parent `win` into a Windows preview HWND. Returns True if embedded."""
+    if not hwnd or sys.platform != "win32":
+        return False
+    import ctypes
+
+    win.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+    win.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+    child = int(win.winId())
+    try:
+        parent = QWindow.fromWinId(hwnd)
+        handle = win.windowHandle()
+        if handle is not None and parent is not None:
+            handle.setParent(parent)
+            size = parent.size()
+            if size.width() > 1 and size.height() > 1:
+                win.resize(size)
+    except Exception:
+        pass
+    try:
+        user32 = _win32_user32()
+        GWL_STYLE = -16
+        WS_CHILD = 0x40000000
+        WS_VISIBLE = 0x10000000
+        WS_POPUP = 0x80000000
+        raw_style = user32.GetWindowLongPtrW(child, GWL_STYLE)
+        style = 0 if raw_style is None else int(raw_style)
+        style = (style | WS_CHILD | WS_VISIBLE) & ~WS_POPUP
+        user32.SetWindowLongPtrW(child, GWL_STYLE, style)
+        user32.SetParent(child, hwnd)
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        rect = RECT()
+        if user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            w = max(1, int(rect.right - rect.left))
+            h = max(1, int(rect.bottom - rect.top))
+            user32.MoveWindow(child, 0, 0, w, h, 1)
+            win.resize(w, h)
+        return True
+    except Exception:
+        return False
+
+
+def run_preview(app: QApplication, sim: PipesSim, hwnd_s: str) -> int:
+    """Windows Display Settings preview. Embeds into HWND when given; else a small window."""
+    win = QWidget()
+    win.setWindowTitle(APP_DISPLAY_NAME)
+    layout = QVBoxLayout(win)
+    layout.setContentsMargins(0, 0, 0, 0)
+    view = PipesWidget(sim, windowed=True)
+    layout.addWidget(view)
+    hwnd = _parse_hwnd(hwnd_s)
+    embedded = _embed_into_hwnd(win, hwnd)
+    if not embedded:
+        win.resize(320, 240)
+    win.show()
+    if embedded and sys.platform == "win32":
+        try:
+            user32 = _win32_user32()
+
+            def _parent_gone() -> None:
+                if user32.IsWindow(hwnd) == 0:
+                    QApplication.quit()
+
+            watch = QTimer(win)
+            watch.setInterval(250)
+            watch.timeout.connect(_parent_gone)
+            watch.start()
+        except Exception:
+            pass
+    view.setFocus()
+    return app.exec()
 
 
 def main(argv: list[str] | None = None) -> int:
-    enable_crash_log()
     args = parse_args(argv)
-    windowed = bool(args.window or args.settings)
+    configure_opengl_env()
+    configure_surface(peek_multisample())
+    app = QApplication([sys.argv[0]])
+    apply_app_identity()
+    app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_DISPLAY_NAME)
+    migrate_legacy_config()
+    enable_crash_log()
     cfg = load_config()
-
-    os.environ.setdefault("QT_OPENGL", "desktop")
-    configure_surface(cfg["multisample"])
-    app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
-    app.setApplicationName("3D Pipes")
-    app.setApplicationDisplayName("3D Pipes")
     try:
         app.setWindowIcon(QIcon(str(ROOT / "share" / "icon.svg")))
     except Exception:
@@ -1260,8 +1561,18 @@ def main(argv: list[str] | None = None) -> int:
 
     sim = PipesSim(cfg, parent=app)
 
-    if windowed:
-        win = PreviewWindow(sim, show_settings=True)
+    if args.dump_screens:
+        raw = list(QGuiApplication.screens())
+        if not raw and app.primaryScreen() is not None:
+            raw = [app.primaryScreen()]
+        _log(format_cover_plan(raw))
+        return 0 if iter_cover_screens(raw) else 1
+
+    if args.preview is not None:
+        return run_preview(app, sim, args.preview)
+
+    if args.window or args.settings:
+        win = PreviewWindow(sim, show_settings=bool(args.settings))
         win.show()
         win.raise_()
         win.activateWindow()
@@ -1272,17 +1583,40 @@ def main(argv: list[str] | None = None) -> int:
     guard = ScreensaverGuard(parent=app)
     app.installEventFilter(guard)
     covers: list[CoverWindow] = []
-    screens = QGuiApplication.screens() or [app.primaryScreen()]
-    for screen in screens:
-        if screen is None:
-            continue
+
+    def add_screen(screen) -> None:
+        if any(c.screen_ref is screen for c in covers):
+            return
+        if not iter_cover_screens([screen]):
+            return
         cover = CoverWindow(sim, screen)
         covers.append(cover)
         cover.place()
+
+    def remove_screen(screen) -> None:
+        kept: list[CoverWindow] = []
+        for cover in covers:
+            if cover.screen_ref is screen:
+                cover.hide()
+                cover.close()
+            else:
+                kept.append(cover)
+        covers[:] = kept
+
+    raw = list(QGuiApplication.screens())
+    if not raw and app.primaryScreen() is not None:
+        raw = [app.primaryScreen()]
+    for screen in iter_cover_screens(raw):
+        add_screen(screen)
     if not covers:
         QMessageBox.critical(None, "3D Pipes", "No screens available.")
         return 1
+    app.screenAdded.connect(add_screen)
+    app.screenRemoved.connect(remove_screen)
     covers[0].view.setFocus()
+    esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), covers[0])
+    esc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+    esc.activated.connect(QApplication.quit)
     return app.exec()
 
 

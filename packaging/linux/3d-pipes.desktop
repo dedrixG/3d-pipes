@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=3D Pipes
+GenericName=3D Pipes Screensaver
+Comment=Classic Windows 3D Pipes — fullscreen on every monitor
+Keywords=screensaver;pipes;opengl;nostalgia;
+Exec=3d-pipes
+Icon=3d-pipes
+Terminal=false
+Categories=Graphics;Amusement;
+StartupNotify=true
+X-KDE-StartupNotify=true
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=3D Pipes Settings
+Exec=3d-pipes --settings

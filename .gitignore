@@ -9,3 +9,7 @@ venv/
 *.log
 *.core
 web/
+build/
+dist/
+*.AppImage
+docs/*.png
