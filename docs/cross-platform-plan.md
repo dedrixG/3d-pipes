@@ -67,27 +67,30 @@ PySide6 is the Windows port. The work is packaging and screensaver flags.
 
 ### 3 — macOS (2–3 days)
 
-- [ ] PyInstaller or Briefcase → `3D Pipes.app`
-- [ ] Icon `.icns` from `share/icon.svg`
-- [ ] Fullscreen per `NSScreen` via Qt (test built-in + external if possible)
-- [ ] OpenGL 4.1 core profile (macOS does not do 4.6). Request 3.3, accept whatever Qt gets, fail with a dialog if shaders don’t compile
-- [ ] Settings + fullscreen as a normal app first
-- [ ] Notarization / hardened runtime is **not** v1 unless a Developer ID is already available (Gatekeeper “right-click Open” is OK)
+- [x] PyInstaller onedir + `BUNDLE` → `3D Pipes.app` (`packaging/macos/3d-pipes.spec`, `scripts/build-macos.sh`)
+- [x] Icon `.icns` from `share/icon.svg` (`scripts/make-icns.py`)
+- [x] Cover each `QScreen` by geometry + stay-on-top (Cocoa `showFullScreen()` would put each window in its own Space)
+- [ ] Hardware: built-in + external display (no Mac on this box; checklist in `docs/macos-notes.md`)
+- [x] OpenGL 4.1 core requested on Darwin; shaders stay `#version 330 core`; fail dialog if they don’t compile
+- [x] Settings + fullscreen as a normal app first
+- [x] Notarization / hardened runtime is **not** v1 (Gatekeeper “right-click Open” is OK)
 - [ ] Native `.saver` (ScreenSaverEngine) is a **follow-up**. It is a different bundle type and not required to enjoy the app.
 
-**Done when:** a `.dmg` or zip containing `3D Pipes.app` opens settings and covers the desktop on Intel or Apple Silicon (or a universal2 build).
+**Done when:** a zip containing `3D Pipes.app` is built on GitHub’s Mac runners (arm64 + Intel). Opening it on real hardware is still a smoke checklist, not a claim.
 
 ### 4 — CI and release (1 day, once 1–3 work locally)
 
 - [x] GitHub Actions:
   - `ubuntu-latest` → AppImage
   - `windows-latest` → exe zip
-  - `macos-latest` → app zip (not in 0.2.0)
-- [x] Tag `v0.2.0` (Fedora: `docs/publishing.md`)
+  - `macos-latest` → `3D_Pipes-macos-arm64.zip`
+  - `macos-15-intel` → `3D_Pipes-macos-x86_64.zip`
+- [x] Tag `v0.2.0` (Linux + Windows)
+- [ ] Tag `v0.3.0` (adds macOS zips) once Actions has built the `.app`
 - [x] Release notes from `CHANGELOG.md` (`scripts/changelog-excerpt.py`)
 - [x] README install section per OS
 
-**Done when:** pushing tag `v0.2.0` publishes Linux + Windows artifacts. macOS still later.
+**Done when:** pushing tag `v0.3.0` publishes Linux + Windows + macOS artifacts.
 
 ## Suggested order
 

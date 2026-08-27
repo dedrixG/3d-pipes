@@ -807,10 +807,11 @@ class PipesWidget(QOpenGLWidget):
         gl.glClearColor(0.0, 0.0, 0.0, 1.0)
 
         self.prog = QOpenGLShaderProgram(self)
+        gl_need = "Need OpenGL 3.3 core (macOS: 4.1). "
         if not self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, VERT):
-            raise RuntimeError(self.prog.log() or "vertex shader failed")
+            raise RuntimeError(gl_need + (self.prog.log() or "vertex shader failed"))
         if not self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, FRAG):
-            raise RuntimeError(self.prog.log() or "fragment shader failed")
+            raise RuntimeError(gl_need + (self.prog.log() or "fragment shader failed"))
         self.prog.bindAttributeLocation("aPos", 0)
         self.prog.bindAttributeLocation("aNormal", 1)
         if not self.prog.link():
@@ -1275,6 +1276,18 @@ class CoverWindow(QWidget):
             self.raise_()
             self.activateWindow()
             self._win32_topmost()
+        elif sys.platform == "darwin":
+            # showFullScreen() on Cocoa creates a Space per window, so a
+            # second monitor would go uncovered. Size to the screen and
+            # stay on top instead (WindowStaysOnTopHint is already set).
+            self.setGeometry(geo)
+            self.show()
+            handle = self.windowHandle()
+            if handle is not None:
+                handle.setScreen(screen)
+            self.setGeometry(geo)
+            self.raise_()
+            self.activateWindow()
         else:
             # Wayland: native handle first so setScreen works before expose.
             self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
@@ -1298,7 +1311,12 @@ class CoverWindow(QWidget):
 
 def make_surface_format(multisample: bool) -> QSurfaceFormat:
     fmt = QSurfaceFormat()
-    fmt.setVersion(3, 3)
+    # macOS desktop GL tops out at 4.1 core. Request that explicitly;
+    # #version 330 shaders still compile. Other OS: 3.3 core.
+    if sys.platform == "darwin":
+        fmt.setVersion(4, 1)
+    else:
+        fmt.setVersion(3, 3)
     fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
     fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
     fmt.setDepthBufferSize(24)
@@ -1347,11 +1365,17 @@ def normalize_screensaver_argv(argv: list[str]) -> list[str]:
 
     Control Panel may pass `/c 12345` (two tokens) or `/c:12345`. The HWND
     after `/c` or `/a` must be consumed or argparse treats it as unknown.
+
+    Finder may pass `-psn_0_XXXXX` (process serial number) when launching a
+    .app; strip it so argparse does not treat it as an unknown option.
     """
     out: list[str] = []
     i = 0
     while i < len(argv):
         raw = argv[i]
+        if raw.startswith("-psn_"):
+            i += 1
+            continue
         flag, attached = _scr_token(raw)
         if flag in ("/s", "-s"):
             out.append("--fullscreen")

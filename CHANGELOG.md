@@ -9,8 +9,34 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Planned
 
-- macOS `3D Pipes.app` and a macOS GitHub Actions build
 - Optional later: Flatpak / `.deb`
+- macOS `.saver` in System Settings (not required to run the app)
+- Hardware smoke of the frozen `.app` (no Mac on the maintainer box)
+
+## [0.3.0] — 2026-08-26
+
+macOS `3D Pipes.app` from the same Python + PySide6 sources. GitHub Actions
+builds Apple Silicon and Intel zips. How to ship a tag: [docs/publishing.md](docs/publishing.md).
+What we could not test here: [docs/macos-notes.md](docs/macos-notes.md).
+
+### Added
+
+- PyInstaller `3D Pipes.app` (`packaging/macos/`, `scripts/build-macos.sh`)
+- `share/icon.icns` generated from the SVG
+- GitHub Actions: `macos-latest` (arm64) and `macos-15-intel` (x86_64)
+- Finder `-psn_*` argv is stripped so double-clicking the `.app` does not die in argparse
+- OpenGL surface request is 4.1 core on macOS (Apple’s cap); shaders stay `#version 330 core`
+
+### Changed
+
+- Fullscreen covers on macOS size to each `QScreen` and stay on top instead of `showFullScreen()` (that would create a Space per window and miss extra monitors)
+
+### Known issues
+
+- The `.app` is unsigned — first launch needs right-click → Open
+- Not a System Settings screensaver (`.saver` is later)
+- No hardware smoke: this release’s Mac jobs are CI builds only
+- Intel and Apple Silicon are separate zips, not a universal2 binary
 
 ## [0.2.0] — 2026-08-26
 
@@ -40,7 +66,7 @@ Cross-platform source, Linux AppImage, and Windows `.exe` / `.scr`. Tag `v0.2.0`
 
 ### Known issues
 
-- macOS app is not in this release
+- macOS app is not in this release (added in 0.3.0)
 - MSAA may report 0 samples on some GPUs (Linux Mesa and the Windows box used for smoke); “Smooth edges” still saves and applies on the next launch when the driver allows it
 - Windows builds are unsigned — SmartScreen “More info → Run anyway” is expected
 - Multi-monitor cover was unit-tested; only one real Windows display was smoked
@@ -75,7 +101,8 @@ First public Linux release. Native OpenGL, no browser.
 - MSAA may report 0 samples on some Wayland + Mesa setups; the “Smooth edges” option still applies on next launch when the driver allows it
 - Not yet a system screensaver (KDE/GNOME/Windows/macOS hook)
 
-[Unreleased]: https://github.com/dedrixG/3d-pipes/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dedrixG/3d-pipes/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dedrixG/3d-pipes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dedrixG/3d-pipes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dedrixG/3d-pipes/releases/tag/v0.1.0
 

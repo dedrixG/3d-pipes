@@ -9,7 +9,7 @@ from pathlib import Path
 ORG_NAME = "dedrixG"
 APP_NAME = "3d-pipes"
 APP_DISPLAY_NAME = "3D Pipes"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 ORG_DOMAIN = "github.com/dedrixG"
 
 LEGACY_LINUX_CONFIG = Path.home() / ".config" / "pipes-screensaver" / "config.json"

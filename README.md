@@ -6,9 +6,8 @@ One window per monitor. Move the mouse or press a key to exit.
 
 ![3D Pipes icon](share/icon.svg)
 
-**v0.2.0** ships a Linux AppImage and a Windows `.exe` / `.scr` from
-[Releases](https://github.com/dedrixG/3d-pipes/releases). macOS is still
-planned ([porting plan](docs/cross-platform-plan.md)).
+**v0.3.0** ships a Linux AppImage, Windows `.exe` / `.scr`, and macOS
+`.app` zips from [Releases](https://github.com/dedrixG/3d-pipes/releases).
 
 ## Quick start
 
@@ -45,6 +44,22 @@ and right-click → **Install**. Windows then calls:
 
 The build is unsigned. SmartScreen may show “Windows protected your PC” —
 **More info → Run anyway**. That is expected for a hobby release.
+
+### macOS
+
+Download `3D_Pipes-macos-arm64.zip` (Apple Silicon) or
+`3D_Pipes-macos-x86_64.zip` (Intel) from
+[Releases](https://github.com/dedrixG/3d-pipes/releases). Unzip, then
+right-click `3D Pipes.app` → **Open** (the app is unsigned; Gatekeeper
+blocks a first-time double-click).
+
+```bash
+open "3D Pipes.app"                        # fullscreen, every display
+open "3D Pipes.app" --args --settings      # windowed preview + settings
+```
+
+This is a normal app, not a System Settings screensaver. Needs macOS 12+
+and a GPU that can do OpenGL 4.1 core (every Mac that runs 12 can).
 
 ## From source
 
@@ -92,6 +107,19 @@ scripts\build-windows.bat
 
 That writes `dist\3DPipes.exe` and `dist\3DPipes.scr`.
 
+### macOS (build the app yourself)
+
+Needs a Mac (this repo does not cross-compile the `.app` from Linux):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+./scripts/build-macos.sh
+```
+
+That writes `dist/3D Pipes.app` and `dist/3D_Pipes-macos-<arch>.zip`.
+
 ### Linux AppImage (build yourself)
 
 ```bash
@@ -106,10 +134,13 @@ That writes `dist\3DPipes.exe` and `dist\3DPipes.scr`.
 | Restart | — | Space |
 | Settings | — | S toggles the panel |
 
-Settings are saved in the platform config directory
-(`~/.config/dedrixG/3d-pipes/config.json` on Linux,
-`%LOCALAPPDATA%\dedrixG\3d-pipes\config.json` on Windows). An older
-`~/.config/pipes-screensaver/config.json` is copied there once.
+Settings are saved in the platform config directory:
+
+- Linux: `~/.config/dedrixG/3d-pipes/config.json`
+- Windows: `%LOCALAPPDATA%\dedrixG\3d-pipes\config.json`
+- macOS: `~/Library/Preferences/dedrixG/3d-pipes/config.json`
+
+An older `~/.config/pipes-screensaver/config.json` is copied there once.
 
 ## Settings
 
@@ -126,7 +157,7 @@ Settings are saved in the platform config directory
 
 ## Requirements
 
-- Linux (Wayland or X11) or Windows 10/11 — macOS is still planned
+- Linux (Wayland or X11), Windows 10/11, or macOS 12+
 - Python 3.10+ (from source only)
 - [PySide6](https://pypi.org/project/PySide6/) and NumPy (from source only)
 - OpenGL 3.3+
