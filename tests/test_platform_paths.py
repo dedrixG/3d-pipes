@@ -27,7 +27,7 @@ class PlatformPathsTest(unittest.TestCase):
         self.assertEqual(state, Path("/tmp/LocalAppData") / "dedrixG" / "3d-pipes")
 
     def test_version(self):
-        self.assertEqual(platform_paths.APP_VERSION, "0.3.0")
+        self.assertEqual(platform_paths.APP_VERSION, "0.4.0")
 
 
 if __name__ == "__main__":

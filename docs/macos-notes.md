@@ -40,7 +40,7 @@ Notarization / Developer ID is not this release. Native `.saver` is later.
 Same spirit as [windows-test-notes.md](windows-test-notes.md). Do not call
 it done until these pass:
 
-- [ ] `--version` prints `3D Pipes 0.3.0`
+- [ ] `--version` prints `3D Pipes 0.4.0`
 - [ ] `--dump-screens` lists built-in (and external, if attached)
 - [ ] `--settings` window + sliders save, relaunch picks them up
 - [ ] Double-click covers every display (laptop + HDMI if possible)

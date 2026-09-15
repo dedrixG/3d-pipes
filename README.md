@@ -6,8 +6,10 @@ One window per monitor. Move the mouse or press a key to exit.
 
 ![3D Pipes icon](share/icon.svg)
 
-**v0.3.0** ships a Linux AppImage, Windows `.exe` / `.scr`, and macOS
+**v0.4.0** ships a Linux AppImage, Windows `.exe` / `.scr`, and macOS
 `.app` zips from [Releases](https://github.com/dedrixG/3d-pipes/releases).
+Sequential pipe start is the default (256-segment / 5-color caps); scenes
+reset when pipes finish.
 
 ## Quick start
 
@@ -146,11 +148,12 @@ An older `~/.config/pipes-screensaver/config.json` is copied there once.
 
 | Setting | What it does |
 | --- | --- |
-| Number of pipes | How many pipes grow at once (1–8) |
+| Number of pipes | How many pipes in a scene (1–8) |
+| Pipe start | Sequential (default) grows one pipe until it stops, then starts the next (max 256 segments, max 5 colors). Simultaneous grows every pipe at once. |
 | Thickness | Pipe radius |
 | Speed | How fast new segments grow |
-| Reset interval | `When finished` waits until pipes fill the grid; otherwise restart on a timer |
-| Pause before reset | Delay after a scene ends before starting over |
+| Reset interval | Parked in 0.4.0 — scenes restart after pipes fill the cube |
+| Pause before reset | Delay after pipes finish before starting over |
 | Joints | Elbow, ball, mixed, or cycling |
 | Camera spin | Slow orbit |
 | Smooth edges | MSAA — applies the next time you launch |

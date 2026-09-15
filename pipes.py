@@ -74,8 +74,9 @@ from platform_paths import (
 
 CELL = 1.0
 GRID = 16
-MAX_PIECES = 520
 STRAIGHT_BIAS = 0.78
+SEQUENTIAL_MAX_SEGMENTS = 256
+SEQUENTIAL_MAX_COLORS = 5
 
 
 def _app_root() -> Path:
@@ -102,9 +103,14 @@ DEFAULTS = {
     "reset_seconds": 0.0,
     "reset_delay": 0.9,
     "joints": "mixed",
+    "spawn_mode": "sequential",
     "spin": True,
     "multisample": True,
 }
+
+# Parked for 0.4.0: scenes reset when pipes finish. Saved reset_seconds is kept
+# but ignored until this is flipped back on.
+RESET_TIMER_ENABLED = False
 
 PALETTE = [
     QVector3D(0.89, 0.13, 0.13),
@@ -195,6 +201,9 @@ def sanitize_config(raw: dict | None) -> dict:
     joints = src.get("joints", DEFAULTS["joints"])
     if joints not in {"elbow", "ball", "mixed", "cycle"}:
         joints = DEFAULTS["joints"]
+    spawn_mode = src.get("spawn_mode", DEFAULTS["spawn_mode"])
+    if spawn_mode not in {"sequential", "simultaneous"}:
+        spawn_mode = DEFAULTS["spawn_mode"]
     return {
         "pipe_count": int(_clamp(int(src.get("pipe_count", DEFAULTS["pipe_count"])), 1, 8)),
         "thickness": float(_clamp(float(src.get("thickness", DEFAULTS["thickness"])), 0.16, 0.48)),
@@ -202,9 +211,38 @@ def sanitize_config(raw: dict | None) -> dict:
         "reset_seconds": float(_clamp(float(src.get("reset_seconds", DEFAULTS["reset_seconds"])), 0.0, 300.0)),
         "reset_delay": float(_clamp(float(src.get("reset_delay", DEFAULTS["reset_delay"])), 0.2, 5.0)),
         "joints": joints,
+        "spawn_mode": spawn_mode,
         "spin": bool(src.get("spin", DEFAULTS["spin"])),
         "multisample": bool(src.get("multisample", DEFAULTS["multisample"])),
     }
+
+
+def reset_decision(
+    now: float,
+    started_at: float,
+    reset_at: float,
+    reset_seconds: float,
+    reset_delay: float,
+    living: bool,
+) -> tuple[bool, float]:
+    """Return (should_restart, new_reset_at).
+
+    reset_seconds == 0 is "when finished": after pipes can no longer grow
+    (cube as full as this walk gets), wait reset_delay then restart.
+    A positive timer (when enabled) waits the full interval even if pipes
+    already finished.
+    """
+    if reset_seconds > 0.0:
+        if now - started_at >= reset_seconds:
+            return True, 0.0
+        return False, 0.0
+    if not living:
+        if reset_at == 0.0:
+            return False, now + reset_delay
+        if now >= reset_at:
+            return True, 0.0
+        return False, reset_at
+    return False, 0.0
 
 
 def load_config() -> dict:
@@ -401,8 +439,9 @@ class Pipe:
         self.sim = sim
         self.world = sim.world
         self.items = sim.items
-        self.color = random.choice(PALETTE)
+        self.color = PALETTE[0]
         self.path: list[tuple[int, int, int]] = []
+        self.segments = 0
         self.alive = True
         self.last_exit = QVector3D()
         self.last_dir = (1, 0, 0)
@@ -443,6 +482,7 @@ class Pipe:
                 continue
             d2 = prefer_straight(options2, d1)
             c = add_dir(b, d2)
+            self.color = self.sim.pick_pipe_color()
             self.world.take(s)
             self.world.take(b)
             self.world.take(c)
@@ -450,6 +490,7 @@ class Pipe:
             self.head = c
             self.last_dir = d2
             self.last_exit = cell_world(s)
+            self.segments = 1
             self.add_cap(s, 1.28)
             self.tip = DrawItem(
                 "sphere",
@@ -560,6 +601,10 @@ class Pipe:
         return out
 
     def step(self) -> None:
+        limit = self.sim.max_pipe_segments()
+        if limit is not None and self.segments >= limit:
+            self.die()
+            return
         b = self.head
         a = self.path[-2]
         dir_in = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
@@ -575,6 +620,7 @@ class Pipe:
         self.path.append(c)
         self.head = c
         self.last_dir = dir_out
+        self.segments += 1
 
     def die(self) -> None:
         self.alive = False
@@ -640,6 +686,9 @@ class PipesSim(QObject):
         self.cam_elev = _CAM0_ELEV
         self.reset_at = 0.0
         self.started_at = 0.0
+        self.pipes_remaining = 0
+        self.scene_palette = list(PALETTE)
+        self._color_index = 0
         self.last_t = time.perf_counter()
         self.cycle_index = 0
         self.gl_ready = False
@@ -677,6 +726,48 @@ class PipesSim(QObject):
             return "ball"
         return "ball" if random.random() < 1.0 / 3.0 else "elbow"
 
+    def max_pipe_segments(self) -> int | None:
+        if self.cfg["spawn_mode"] == "sequential":
+            return SEQUENTIAL_MAX_SEGMENTS
+        return None
+
+    def _init_palette(self) -> None:
+        if self.cfg["spawn_mode"] == "sequential":
+            k = min(SEQUENTIAL_MAX_COLORS, len(PALETTE))
+            self.scene_palette = random.sample(list(PALETTE), k)
+        else:
+            self.scene_palette = list(PALETTE)
+        self._color_index = 0
+
+    def pick_pipe_color(self):
+        pal = self.scene_palette or list(PALETTE)
+        color = pal[self._color_index % len(pal)]
+        self._color_index += 1
+        return color
+
+    def _spawn_pipe(self) -> bool:
+        p = Pipe(self)
+        if p.spawn():
+            self.pipes.append(p)
+            return True
+        return False
+
+    def _pipe_busy(self) -> bool:
+        return any(p.alive or p.growing for p in self.pipes)
+
+    def _scene_active(self) -> bool:
+        return self.pipes_remaining > 0 or self._pipe_busy()
+
+    def _maybe_spawn_next(self) -> None:
+        if self.cfg["spawn_mode"] != "sequential":
+            return
+        while self.pipes_remaining > 0 and not self._pipe_busy():
+            if self._spawn_pipe():
+                self.pipes_remaining -= 1
+            else:
+                self.pipes_remaining = 0
+                return
+
     def restart(self) -> None:
         self.items.clear()
         self.world.clear()
@@ -684,14 +775,18 @@ class PipesSim(QObject):
         self.reset_at = 0.0
         self.started_at = time.perf_counter()
         self.cycle_index = 0
-        for _ in range(self.cfg["pipe_count"]):
-            p = Pipe(self)
-            if p.spawn():
-                self.pipes.append(p)
+        self._init_palette()
+        count = self.cfg["pipe_count"]
+        if self.cfg["spawn_mode"] == "simultaneous":
+            for _ in range(count):
+                self._spawn_pipe()
+            self.pipes_remaining = 0
+        else:
+            self._spawn_pipe()
+            self.pipes_remaining = max(0, count - len(self.pipes))
         if not self.pipes:
-            p = Pipe(self)
-            if p.spawn():
-                self.pipes.append(p)
+            self._spawn_pipe()
+            self.pipes_remaining = max(0, count - len(self.pipes))
 
     def start(self) -> None:
         if not self.timer.isActive():
@@ -705,18 +800,18 @@ class PipesSim(QObject):
         if self.gl_ready:
             for p in self.pipes:
                 p.update(dt)
-            living = any(p.alive or p.growing for p in self.pipes)
-            too_big = len(self.items) > MAX_PIECES
-            reset_every = self.cfg["reset_seconds"]
-            if reset_every > 0.0 and now - self.started_at >= reset_every:
+            self._maybe_spawn_next()
+            reset_every = self.cfg["reset_seconds"] if RESET_TIMER_ENABLED else 0.0
+            should_restart, self.reset_at = reset_decision(
+                now,
+                self.started_at,
+                self.reset_at,
+                reset_every,
+                self.cfg["reset_delay"],
+                living=self._scene_active(),
+            )
+            if should_restart:
                 self.restart()
-            elif not living or too_big:
-                if self.reset_at == 0.0:
-                    self.reset_at = now + self.cfg["reset_delay"]
-                elif now >= self.reset_at:
-                    self.restart()
-            else:
-                self.reset_at = 0.0
             if self.cfg["spin"]:
                 self.cam_angle += dt * 0.22
         self.ticked.emit()
@@ -1030,6 +1125,14 @@ class SettingsPanel(QFrame):
         self.joints.addItem("Mixed", "mixed")
         self.joints.addItem("Cycle", "cycle")
 
+        self.spawn_mode = QComboBox()
+        self.spawn_mode.addItem("Sequential", "sequential")
+        self.spawn_mode.addItem("Simultaneous", "simultaneous")
+        self.spawn_mode.setToolTip(
+            "Sequential grows one pipe until it stops, then starts the next. "
+            "Simultaneous grows every pipe at once."
+        )
+
         self.spin = QCheckBox("Camera spin")
         self.msaa = QCheckBox("Smooth edges (next launch)")
 
@@ -1039,6 +1142,7 @@ class SettingsPanel(QFrame):
         form = QFormLayout()
         form.setSpacing(8)
         form.addRow("Number of pipes", self.pipe_count)
+        form.addRow("Pipe start", self.spawn_mode)
         thick_row = QHBoxLayout()
         thick_row.addWidget(self.thickness, 1)
         thick_row.addWidget(self.thickness_lbl)
@@ -1050,6 +1154,12 @@ class SettingsPanel(QFrame):
         form.addRow("Reset interval", self.reset_seconds)
         form.addRow("Pause before reset", self.reset_delay)
         form.addRow("Joints", self.joints)
+        if not RESET_TIMER_ENABLED:
+            self.reset_seconds.setEnabled(False)
+            self.reset_seconds.hide()
+            reset_label = form.labelForField(self.reset_seconds)
+            if reset_label is not None:
+                reset_label.hide()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -1090,6 +1200,7 @@ class SettingsPanel(QFrame):
             self.reset_seconds,
             self.reset_delay,
             self.joints,
+            self.spawn_mode,
         ):
             w.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         for w in (
@@ -1097,6 +1208,7 @@ class SettingsPanel(QFrame):
             self.reset_seconds,
             self.reset_delay,
             self.joints,
+            self.spawn_mode,
             self.spin,
             self.msaa,
         ):
@@ -1121,6 +1233,8 @@ class SettingsPanel(QFrame):
         self.reset_delay.setValue(cfg["reset_delay"])
         idx = self.joints.findData(cfg["joints"])
         self.joints.setCurrentIndex(max(0, idx))
+        spawn_idx = self.spawn_mode.findData(cfg["spawn_mode"])
+        self.spawn_mode.setCurrentIndex(max(0, spawn_idx))
         self.spin.setChecked(cfg["spin"])
         self.msaa.setChecked(cfg["multisample"])
         self._refresh_labels()
@@ -1148,9 +1262,14 @@ class SettingsPanel(QFrame):
             "pipe_count": self.pipe_count.value(),
             "thickness": self.thickness.value() / 100.0,
             "speed": self.speed.value() / 10.0,
-            "reset_seconds": float(self.reset_seconds.value()),
+            "reset_seconds": (
+                float(self.reset_seconds.value())
+                if RESET_TIMER_ENABLED
+                else float(self.sim.cfg["reset_seconds"])
+            ),
             "reset_delay": float(self.reset_delay.value()),
             "joints": self.joints.currentData() or "mixed",
+            "spawn_mode": self.spawn_mode.currentData() or "sequential",
             "spin": self.spin.isChecked(),
             "multisample": self.msaa.isChecked(),
         }
@@ -1158,6 +1277,7 @@ class SettingsPanel(QFrame):
             cfg["pipe_count"] != self.sim.cfg["pipe_count"]
             or abs(cfg["thickness"] - self.sim.cfg["thickness"]) > 1e-6
             or cfg["joints"] != self.sim.cfg["joints"]
+            or cfg["spawn_mode"] != self.sim.cfg["spawn_mode"]
         )
         self.sim.apply_config(cfg, restart=restart)
         self.applied.emit()

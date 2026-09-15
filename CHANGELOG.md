@@ -13,6 +13,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - macOS `.saver` in System Settings (not required to run the app)
 - Hardware smoke of the frozen `.app` (no Mac on the maintainer box)
 
+## [0.4.0] — 2026-09-14
+
+Sequential pipe start, closer to classic 3D Pipes. Same Python + PySide6
+app; GitHub Actions still ship Linux, Windows, and macOS downloads.
+
+### Added
+
+- **Pipe start** setting: Sequential (default) or Simultaneous. Sequential grows one pipe until it stops, then starts the next. Simultaneous is the old all-at-once behavior.
+
+### Changed
+
+- Reset interval is parked: scenes restart when pipes finish (the control is hidden; a saved timer is not applied).
+- Scenes run until pipes can no longer grow, then pause and restart. The old 520-piece draw cap no longer ends a scene early.
+- Sequential pipes stop at 256 segments and use at most 5 colors in a scene.
+- Version is 0.4.0
+
 ## [0.3.0] — 2026-08-26
 
 macOS `3D Pipes.app` from the same Python + PySide6 sources. GitHub Actions
@@ -101,7 +117,8 @@ First public Linux release. Native OpenGL, no browser.
 - MSAA may report 0 samples on some Wayland + Mesa setups; the “Smooth edges” option still applies on next launch when the driver allows it
 - Not yet a system screensaver (KDE/GNOME/Windows/macOS hook)
 
-[Unreleased]: https://github.com/dedrixG/3d-pipes/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dedrixG/3d-pipes/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dedrixG/3d-pipes/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dedrixG/3d-pipes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dedrixG/3d-pipes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dedrixG/3d-pipes/releases/tag/v0.1.0
