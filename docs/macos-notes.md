@@ -1,7 +1,7 @@
 # macOS notes (no hardware smoke on this box)
 
 3D Pipes for macOS is a normal `.app`, not a System Settings `.saver`.
-GitHub Actions builds it; this Fedora machine cannot run the result.
+GitHub Actions builds it; this Linux machine cannot run the result.
 
 ## What CI produces
 

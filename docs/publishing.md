@@ -1,4 +1,4 @@
-# Publishing 3D Pipes from Fedora
+# Publishing 3D Pipes from this Linux machine
 
 This is the maintainer guide for putting a tagged release on the public
 GitHub repo [`dedrixG/3d-pipes`](https://github.com/dedrixG/3d-pipes).
@@ -9,7 +9,7 @@ End users should use the [README](../README.md), not this file.
 0.1.0 was Linux-only. 0.2.0 added Windows `.exe` / `.scr` and the AppImage.
 
 0.3.0 is the same Python + PySide6 app plus a macOS `.app` built on GitHub’s
-Mac runners (this Fedora box cannot smoke it). Checklist:
+Mac runners (this Linux machine cannot smoke it). Checklist:
 [macos-notes.md](macos-notes.md).
 
 | Work | Where |
@@ -32,7 +32,7 @@ preview HWND handling was incomplete. Details:
 should run the checklist in [macos-notes.md](macos-notes.md) before calling
 it smoked.
 
-Fedora does **not** cross-compile the Windows exe or the macOS app. Pushing
+This Linux machine does **not** cross-compile the Windows exe or the macOS app. Pushing
 tag `v0.3.0` runs GitHub Actions on `ubuntu-latest`, `windows-latest`,
 `macos-latest` (arm64), and `macos-15-intel`, then attaches:
 
@@ -49,14 +49,14 @@ To build the `.app` **without** tagging (artifact only): Actions → Release →
 
 `dist/`, `build/`, `.venv/`, `__pycache__/`, `*.AppImage`, and `docs/*.png`
 are gitignored on purpose. Those are local/CI outputs (the Linux tree under
-`dist/` is full of Fedora `.so` files and must not go public).
+`dist/` is full of Linux `.so` files and must not go public).
 
 Do not add `web/` — the native app does not use it.
 
-## Fedora: ship it
+## Linux: ship it
 
 OneDrive/NTFS will have dropped the executable bit and may have CRLF from the
-Windows edits. Do this **on Fedora**, in the repo root.
+Windows edits. Do this **on Linux**, in the repo root.
 
 ### 1. Line endings and +x
 
@@ -72,7 +72,7 @@ chmod +x start.sh server.py \
 ### 2. Sanity check
 
 ```bash
-# Fedora system packages, if you do not already have them:
+# Linux system packages, if you do not already have them:
 sudo dnf install python3-pyside6 python3-numpy
 
 chmod +x scripts/release-check.sh
@@ -149,7 +149,7 @@ strangers to download without signing in.
 - You can also run **Release → Run workflow** (`workflow_dispatch`) to rebuild
   artifacts without creating a Release. Only `v*` tags publish.
 
-Do not upload the Fedora `dist/` tree as a Windows build. It is ELF, not PE.
+Do not upload the Linux `dist/` tree as a Windows build. It is ELF, not PE.
 
 ## Public install (what you tell people)
 

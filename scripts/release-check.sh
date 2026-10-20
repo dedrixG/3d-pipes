@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-push sanity check for Fedora (or any Linux box with PySide6).
+# Pre-push sanity check for any Linux box with PySide6.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"

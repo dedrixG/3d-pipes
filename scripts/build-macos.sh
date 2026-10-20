@@ -7,7 +7,7 @@ cd "$ROOT"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "scripts/build-macos.sh must run on macOS (or GitHub's macos runner)." >&2
-  echo "This Fedora box cannot produce a .app. Use Actions → Release → Run workflow." >&2
+  echo "This Linux machine cannot produce a .app. Use Actions → Release → Run workflow." >&2
   exit 1
 fi
 

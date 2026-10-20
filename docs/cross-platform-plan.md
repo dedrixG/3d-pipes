@@ -33,17 +33,17 @@ Do this before any OS packaging. Small, unblocks everything.
 - [x] Move `QT_OPENGL=desktop` behind `sys.platform` (skip or use `software` fallback on macOS if the context fails)
 - [x] `--window` / `--settings` / `--fullscreen` unchanged
 - [x] Add `--preview` (HWND / window id) stub for future Windows `/p`
-- [x] Manual check: Fedora still runs; config file migrates once from the old path if present
+- [x] Manual check: this Linux machine still runs; config file migrates once from the old path if present
 
 **Done when:** same source runs with no Linux-only paths, still works on this machine.
 
-### 1 — Linux beyond Fedora (1–2 days)
+### 1 — Broader Linux support (1–2 days)
 
 - [x] `pip install -r requirements.txt` documented for Ubuntu/Debian (`python3-pip`, maybe `libxcb-*` notes)
 - [x] **AppImage** via PyInstaller + appimagetool (`./scripts/build-appimage.sh`). One file, any modern distro.
 - [ ] Optional later: Flatpak (Flathub) and a `.deb` / COPR. Not required for v1.
 - [x] Keep `.desktop` install for people who clone the repo
-- [x] Test: Fedora AppImage + from-source (Wayland). Other distros not smoke-tested here.
+- [x] Test: AppImage + from-source on this Linux machine (Wayland). Other distros not smoke-tested here.
 
 **Done when:** `./scripts/build-appimage.sh` produces a runnable `.AppImage`. Publishing it on a GitHub Release is Phase 4.
 
@@ -98,7 +98,7 @@ PySide6 is the Windows port. The work is packaging and screensaver flags.
 0 portable paths  →  1 AppImage  →  2 Windows exe  →  3 macOS app  →  4 CI tags
 ```
 
-Windows before macOS: more people still expect a `.exe`/`.scr`, and OpenGL is less of a fight. AppImage first so Linux users off Fedora are not left behind while Windows is in progress.
+Windows before macOS: more people still expect a `.exe`/`.scr`, and OpenGL is less of a fight. AppImage first so Linux users on other distros are not left behind while Windows is in progress.
 
 ## Out of scope for this pass
 

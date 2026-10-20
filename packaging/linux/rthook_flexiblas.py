@@ -1,4 +1,4 @@
-"""Point Fedora FlexiBLAS at backends bundled next to the frozen app."""
+"""Point FlexiBLAS at backends bundled next to the frozen app."""
 import os
 import sys
 from pathlib import Path

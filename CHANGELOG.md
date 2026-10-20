@@ -56,7 +56,7 @@ What we could not test here: [docs/macos-notes.md](docs/macos-notes.md).
 
 ## [0.2.0] — 2026-08-26
 
-Cross-platform source, Linux AppImage, and Windows `.exe` / `.scr`. Tag `v0.2.0` and GitHub Actions attach the downloads. How to ship it from Fedora: [docs/publishing.md](docs/publishing.md). What was tested on Windows: [docs/windows-test-notes.md](docs/windows-test-notes.md).
+Cross-platform source, Linux AppImage, and Windows `.exe` / `.scr`. Tag `v0.2.0` and GitHub Actions attach the downloads. How to ship it from this Linux machine: [docs/publishing.md](docs/publishing.md). What was tested on Windows: [docs/windows-test-notes.md](docs/windows-test-notes.md).
 
 ### Added
 

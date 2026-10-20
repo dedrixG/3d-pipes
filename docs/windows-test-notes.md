@@ -1,6 +1,6 @@
 # Windows smoke test notes
 
-Shipped in **0.2.0**. How Fedora publishes that tag: [publishing.md](publishing.md).
+Shipped in **0.2.0**. How this Linux machine publishes that tag: [publishing.md](publishing.md).
 
 Machine: Windows 10/11, Python 3.13, PySide6 6.11.2, one display
 `\\.\DISPLAY1` 1920×1080 physical, 125% DPI (Qt geometry 1536×864). OpenGL 3.3 core.
