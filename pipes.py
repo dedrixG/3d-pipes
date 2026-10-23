@@ -192,24 +192,44 @@ void main() {
 """
 
 
-def _clamp(val, lo, hi):
+def _clamp(val, lo, hi, default):
+    if not math.isfinite(val):
+        return default
     return lo if val < lo else hi if val > hi else val
 
 
 def sanitize_config(raw: dict | None) -> dict:
     src = raw if isinstance(raw, dict) else {}
+
+    def _safe_num(key, default):
+        val = src.get(key, default)
+        try:
+            fval = float(val)
+            if not math.isfinite(fval):
+                return default
+            return fval
+        except (TypeError, ValueError):
+            return default
+
     joints = src.get("joints", DEFAULTS["joints"])
     if joints not in {"elbow", "ball", "mixed", "cycle"}:
         joints = DEFAULTS["joints"]
     spawn_mode = src.get("spawn_mode", DEFAULTS["spawn_mode"])
     if spawn_mode not in {"sequential", "simultaneous"}:
         spawn_mode = DEFAULTS["spawn_mode"]
+
+    pipe_count_raw = _safe_num("pipe_count", DEFAULTS["pipe_count"])
+    thickness_raw = _safe_num("thickness", DEFAULTS["thickness"])
+    speed_raw = _safe_num("speed", DEFAULTS["speed"])
+    reset_seconds_raw = _safe_num("reset_seconds", DEFAULTS["reset_seconds"])
+    reset_delay_raw = _safe_num("reset_delay", DEFAULTS["reset_delay"])
+
     return {
-        "pipe_count": int(_clamp(int(src.get("pipe_count", DEFAULTS["pipe_count"])), 1, 8)),
-        "thickness": float(_clamp(float(src.get("thickness", DEFAULTS["thickness"])), 0.16, 0.48)),
-        "speed": float(_clamp(float(src.get("speed", DEFAULTS["speed"])), 2.0, 20.0)),
-        "reset_seconds": float(_clamp(float(src.get("reset_seconds", DEFAULTS["reset_seconds"])), 0.0, 300.0)),
-        "reset_delay": float(_clamp(float(src.get("reset_delay", DEFAULTS["reset_delay"])), 0.2, 5.0)),
+        "pipe_count": int(_clamp(int(pipe_count_raw), 1, 8, DEFAULTS["pipe_count"])),
+        "thickness": float(_clamp(thickness_raw, 0.16, 0.48, DEFAULTS["thickness"])),
+        "speed": float(_clamp(speed_raw, 2.0, 20.0, DEFAULTS["speed"])),
+        "reset_seconds": float(_clamp(reset_seconds_raw, 0.0, 300.0, DEFAULTS["reset_seconds"])),
+        "reset_delay": float(_clamp(reset_delay_raw, 0.2, 5.0, DEFAULTS["reset_delay"])),
         "joints": joints,
         "spawn_mode": spawn_mode,
         "spin": bool(src.get("spin", DEFAULTS["spin"])),
