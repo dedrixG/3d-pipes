@@ -205,5 +205,27 @@ class SpawnModeTest(unittest.TestCase):
         self.assertEqual(len(sim.scene_palette), 10)
 
 
+class SanitizeConfigNaNTest(unittest.TestCase):
+    def test_nan_speed_falls_back_to_default(self):
+        cfg = sanitize_config({"speed": float("nan")})
+        self.assertEqual(cfg["speed"], DEFAULTS["speed"])
+
+    def test_infinity_thickness_falls_back_to_default(self):
+        # Infinity should fall back to default, not clamp to max
+        cfg = sanitize_config({"thickness": float("inf")})
+        self.assertEqual(cfg["thickness"], DEFAULTS["thickness"])
+
+    def test_negative_infinity_falls_back_to_default(self):
+        cfg = sanitize_config({"pipe_count": float("-inf")})
+        self.assertEqual(cfg["pipe_count"], DEFAULTS["pipe_count"])
+
+    def test_bad_key_only_resets_that_key(self):
+        cfg = sanitize_config({"pipe_count": "abc", "speed": 5.0})
+        # pipe_count should fall back to default because "abc" is not a number
+        self.assertEqual(cfg["pipe_count"], DEFAULTS["pipe_count"])
+        # speed should be kept as provided
+        self.assertEqual(cfg["speed"], 5.0)
+
+
 if __name__ == "__main__":
     unittest.main()
