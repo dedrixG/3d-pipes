@@ -1,4 +1,6 @@
 import os
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -28,6 +30,36 @@ class PlatformPathsTest(unittest.TestCase):
 
     def test_version(self):
         self.assertEqual(platform_paths.APP_VERSION, "0.4.0")
+
+
+class MigrateLegacyConfigTest(unittest.TestCase):
+    def test_migrates_when_dest_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            legacy = Path(tmpdir) / "legacy.json"
+            dest = Path(tmpdir) / "new.json"
+            legacy.write_text("{'key': 'value'}")
+            result = platform_paths.migrate_legacy_config(dest=dest, legacy=legacy)
+            self.assertTrue(result)
+            self.assertTrue(dest.exists())
+            self.assertEqual(dest.read_text(), "{'key': 'value'}")
+
+    def test_skips_when_dest_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            legacy = Path(tmpdir) / "legacy.json"
+            dest = Path(tmpdir) / "new.json"
+            dest.write_text("existing")
+            legacy.write_text("{'key': 'value'}")
+            result = platform_paths.migrate_legacy_config(dest=dest, legacy=legacy)
+            self.assertFalse(result)
+            self.assertEqual(dest.read_text(), "existing")
+
+    def test_skips_when_legacy_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "new.json"
+            legacy = Path(tmpdir) / "nonexistent.json"
+            result = platform_paths.migrate_legacy_config(dest=dest, legacy=legacy)
+            self.assertFalse(result)
+            self.assertFalse(dest.exists())
 
 
 if __name__ == "__main__":
