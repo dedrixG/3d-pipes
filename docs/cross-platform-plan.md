@@ -62,8 +62,9 @@ PySide6 is the Windows port. The work is packaging and screensaver flags.
 - [x] Fullscreen stay-on-top on Win32 (without it the cover sat behind other windows / the taskbar)
 - [x] Code signing is **not** v1 (SmartScreen warning is acceptable for a hobby release)
 - [x] Source smoke on real Win11 hardware: `--dump-screens`, `--settings`, OpenGL grab, `/c HWND` argv, fullscreen cover
+- [x] Frozen `3DPipes.exe` / `.scr` on real Win11 (2026-09-10 laptop): PyInstaller onefile, `--settings` + `/s` desktop grab, installed as `HKCU` screensaver. Notes: `docs/windows-test-notes.md`
 
-**Done when:** `scripts\build-windows.bat` on a Windows machine produces `dist\3DPipes.exe`. Source smoke on Win11 is done; frozen `.exe` still needs a local PyInstaller run.
+**Done when:** `scripts\build-windows.bat` on a Windows machine produces `dist\3DPipes.exe`. Source and frozen smoke on Win11 are both done. Fedora still needs to commit/tag 0.4.0 so CI publishes that freeze.
 
 ### 3 — macOS (2–3 days)
 

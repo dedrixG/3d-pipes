@@ -28,6 +28,20 @@ stay-on-top + no early `createWinId()`. `/c <HWND>` crashed argparse. `/p`
 preview HWND handling was incomplete. Details:
 [windows-test-notes.md](windows-test-notes.md).
 
+**Windows laptop 2026-09-10 (0.4.0, frozen exe now smoked):** a second
+Win11 box built `dist\3DPipes.exe` / `.scr` with PyInstaller 6.22 and
+installed it as the user screensaver. Fedora still owns the 0.4.0
+commit + tag. Read the “0.4.0 laptop install” section in
+[windows-test-notes.md](windows-test-notes.md) before you `git add`
+anything that OneDrive dirtied.
+
+**Display scale:** pipes look small on that 15.5" 1080p laptop. Fedora
+should detect the user's `QScreen` and scale the authored camera /
+thickness vs the Fedora reference display. Do not hardcode the laptop.
+Section: [windows-test-notes.md](windows-test-notes.md) “Display scale
+(Fedora)”. Pointer comments are on `GRID` / `CELL` and in
+`PipesWidget._paint_gl`.
+
 **macOS:** no hardware here. CI builds `3D Pipes.app`; a human with a Mac
 should run the checklist in [macos-notes.md](macos-notes.md) before calling
 it smoked.
