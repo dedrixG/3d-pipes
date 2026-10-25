@@ -17,6 +17,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Sequential pipe start, closer to classic 3D Pipes. Same Python + PySide6
 app; GitHub Actions still ship Linux, Windows, and macOS downloads.
+`v0.4.0` is the finished screensaver. Camera and thickness stay the
+Fedora-authored values.
 
 ### Added
 

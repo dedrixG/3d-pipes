@@ -70,7 +70,7 @@ git clone https://github.com/dedrixG/3d-pipes.git
 cd 3d-pipes
 ```
 
-### Linux
+### Fedora
 
 ```bash
 sudo dnf install python3-pyside6 python3-numpy
