@@ -64,7 +64,7 @@ PySide6 is the Windows port. The work is packaging and screensaver flags.
 - [x] Source smoke on real Win11 hardware: `--dump-screens`, `--settings`, OpenGL grab, `/c HWND` argv, fullscreen cover
 - [x] Frozen `3DPipes.exe` / `.scr` on real Win11 (2026-09-10 laptop): PyInstaller onefile, `--settings` + `/s` desktop grab, installed as `HKCU` screensaver. Notes: `docs/windows-test-notes.md`
 
-**Done when:** `scripts\build-windows.bat` on a Windows machine produces `dist\3DPipes.exe`. Source and frozen smoke on Win11 are both done. Fedora still needs to commit/tag 0.4.0 so CI publishes that freeze.
+**Done when:** `scripts\build-windows.bat` on a Windows machine produces `dist\3DPipes.exe`. Source and frozen smoke on Win11 are both done. `v0.4.0` is tagged and published.
 
 ### 3 — macOS (2–3 days)
 
@@ -87,11 +87,12 @@ PySide6 is the Windows port. The work is packaging and screensaver flags.
   - `macos-latest` → `3D_Pipes-macos-arm64.zip`
   - `macos-15-intel` → `3D_Pipes-macos-x86_64.zip`
 - [x] Tag `v0.2.0` (Linux + Windows)
-- [ ] Tag `v0.3.0` (adds macOS zips) once Actions has built the `.app`
+- [x] Tag `v0.3.0` (adds macOS zips)
+- [x] Tag `v0.4.0` (sequential pipe start; the finished screensaver)
 - [x] Release notes from `CHANGELOG.md` (`scripts/changelog-excerpt.py`)
 - [x] README install section per OS
 
-**Done when:** pushing tag `v0.3.0` publishes Linux + Windows + macOS artifacts.
+**Done when:** `v0.3.0` and `v0.4.0` are published with Linux, Windows, and macOS downloads. They are.
 
 ## Suggested order
 

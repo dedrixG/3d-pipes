@@ -48,11 +48,12 @@ Ran from `OneDrive\Projects\pipes-screensaver` against source (not a frozen `.ex
 .venv\Scripts\python.exe pipes.py /c 12345
 ```
 
-## 0.4.0 laptop install — 2026-09-10 (Fedora: read this)
+## 0.4.0 laptop install — 2026-09-10
 
 Same OneDrive tree, a second Win11 box (this one). **No source changes.**
-Unreleased 0.4.0 (sequential spawn, parked reset interval) is what was
-built and installed, not GitHub `v0.3.0`.
+This was the 0.4.0 build (sequential spawn, parked reset interval),
+not GitHub `v0.3.0`. That build is now the published `v0.4.0` tag
+(`74bb637`).
 
 Machine: Windows 11 Pro Insider, build 26100, Python 3.13.14 (Store) venv,
 PySide6 6.11.2, PyInstaller 6.22.2. One display `\\.\DISPLAY1` 1920×1080
@@ -101,13 +102,13 @@ The Screen Saver dropdown in desk.cpl only lists `System32\*.scr`. Idle
 will still run this path. To also show in the dropdown, on the laptop:
 right-click `3DPipes.scr` → **Install** (UAC copies into System32).
 
-### Fedora adjustments (do these on Fedora, not here)
+### Fedora adjustments
 
-1. **Commit 0.4.0 from Fedora**, not from this Windows checkout.
-   Real diffs: `pipes.py`, `platform_paths.py` (`APP_VERSION`), `README.md`,
-   `CHANGELOG.md`, `tests/test_platform_paths.py`, and **untracked**
-   `tests/test_config.py`. Tag `v0.4.0` if you want sequential pipes on
-   GitHub Releases; CI will freeze the Windows `.exe` / `.scr`.
+These were the laptop's instructions. They are closed for `v0.4.0`.
+
+1. **Committed and tagged from Fedora.** `v0.4.0` is `74bb637` on `main`,
+   and the GitHub Release is published. The Windows checkout was not the
+   place to commit it.
 2. **Do not `git add` the 0-line script diffs** (`start.sh`, `server.py`,
    `scripts/*.sh`, `scripts/*.py`). This box has `core.autocrlf=true` and
    `core.filemode=true`; OneDrive/NTFS dropped `+x` and may have touched
@@ -119,31 +120,26 @@ right-click `3DPipes.scr` → **Install** (UAC copies into System32).
    ELF / AppImage — do not upload it as a Windows build.
 4. README Windows config path (`%LOCALAPPDATA%\dedrixG\3d-pipes`) is the
    *predicted* dir. This freeze wrote state under
-   `%LOCALAPPDATA%\State\dedrixG\3d-pipes`. Optional README tweak, not a
-   bug. Store-Python *source* runs also virtualize AppData under
+   `%LOCALAPPDATA%\State\dedrixG\3d-pipes`. Left as a note, not a bug.
+   Store-Python *source* runs also virtualize AppData under
    `Packages\PythonSoftwareFoundation.Python.3.13_*\LocalCache\` — the
    frozen `.exe` does not.
-5. Frozen `.exe` / `.scr` is now smoked on real Win11 hardware. You can
-   tick that box in [cross-platform-plan.md](cross-platform-plan.md)
-   phase 2 (“frozen `.exe` still needs a local PyInstaller run”).
-6. Still unsigned. Still one monitor. MSAA still `samples=0`. `/p` HWND
-   embed was not re-tested on this pass.
-7. **Display scale** — pipes look a bit small on this laptop. Implement
-   on Fedora (do not bake a laptop-only constant). Details in the
-   section below.
+5. Frozen `.exe` / `.scr` is smoked on real Win11 hardware. That box is
+   ticked in [cross-platform-plan.md](cross-platform-plan.md) phase 2.
+6. Still unsigned. Still one monitor on this laptop. MSAA was `samples=0`.
+   `/p` HWND embed was not re-tested on this pass.
+7. **Display scale** is accepted for `v0.4.0`. The pipes look a bit small
+   on this laptop. Camera and thickness stay the Fedora-authored values.
 
-## Display scale (Fedora)
+## Display scale
 
-The cube is authored in world units on the Fedora box (`GRID=16`,
-`CELL=1.0`, `DEFAULTS["thickness"]=0.33`, camera 56° FOV and
-`dist * 1.08` in `PipesWidget._paint_gl`). Perspective already fills
-the **same fraction of the window** at any pixel size, so 1080p vs 1440p
-at the same aspect looks identical. This laptop is a **smaller physical
-panel**, so that fraction feels tiny.
-
-Do this **on Fedora**, using Fedora as the original / reference look.
-Scale those base values up or down for the display of the person
-running it.
+Accepted for `v0.4.0`. The cube stays authored on the Fedora box
+(`GRID=16`, `CELL=1.0`, `DEFAULTS["thickness"]=0.33`, camera 56° FOV and
+`dist * 1.08` in `PipesWidget._paint_gl`). Perspective fills the **same
+fraction of the window** at any pixel size, so 1080p vs 1440p at the
+same aspect looks identical. This laptop is a **smaller physical
+panel**, so that fraction looks small. This release does not scale
+camera or thickness from `QScreen`.
 
 ### This laptop (the user to match)
 
@@ -158,50 +154,4 @@ running it.
 | Refresh | 60 Hz |
 
 Fullscreen cover is 1920×1080. Pipes sat as a small cluster in the
-middle (`docs/windows-fullscreen-frozen.png`).
-
-### What to record on Fedora first
-
-Run the same dump on the Fedora box (the original look):
-
-```bash
-./start.sh --dump-screens
-```
-
-and print `QScreen.physicalSize()`, `physicalDotsPerInch()`,
-`devicePixelRatio()`, `geometry()`. Keep those numbers next to the
-table above. That pair is the scale.
-
-Suggested factor (physical diagonal, or height if you prefer):
-
-```
-scale = fedora_physical_mm / user_physical_mm
-```
-
-This laptop is ~394 mm diagonal. If Fedora is a ~27" (686 mm) desk
-panel, `scale ≈ 1.74` — camera closer / thicker pipes here so they
-read at a similar **real-world size**. If you instead want the same
-**fraction of the screen** as Fedora, you already have that and should
-not scale; the complaint here is the former.
-
-Fall back if `physicalSize()` is missing or nonsense (some drivers
-report 0 mm): use pixel height vs Fedora’s pixel height, then multiply
-by `dpr`.
-
-### What to scale (knobs in `pipes.py`)
-
-| Knob | Where | Notes |
-| --- | --- | --- |
-| Camera distance / FOV | `PipesWidget._paint_gl` (`half`, `v_fov`, `dist`) | Best first lever. Smaller physical display → smaller `dist` (or slightly tighter FOV) so the cube fills more of the view. |
-| `DEFAULTS["thickness"]` | `pipes.py` | Only as a *relative* radius on the reference. Do **not** write a scaled thickness into `config.json` or the slider will double-apply on the next launch. |
-| `GRID` / `CELL` | top of `pipes.py` | Leave as the sim grid. Scaling the camera is enough; changing GRID changes how long a scene lives. |
-
-Per **cover `QScreen`**, not widget size. The settings preview is a
-small window on purpose; `/p` HWND is even smaller. Fullscreen covers
-should use `window.handle().screen()` / the `QScreen` you already pass
-into `CoverWindow`. Mixed DPI / two heads: each cover scales from its
-own screen (Fedora reference stays one pair of numbers).
-
-Do not hardcode 1920×1080 or 344×193 in the repo. Detect at runtime.
-The table above is the first non-Fedora user to check against once you
-have Fedora’s dump.
+middle (`docs/windows-fullscreen-frozen.png`). That is the `v0.4.0` look.

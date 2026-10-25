@@ -72,10 +72,9 @@ from platform_paths import (
     state_dir,
 )
 
-# World units are authored on the Fedora box. They do not yet scale to the
-# user's display (this 15.5" 1080p laptop looks small). Detect the cover
-# QScreen and scale these vs Fedora's reference — see
-# docs/windows-test-notes.md § "Display scale (Fedora)".
+# World units are authored on the Fedora box. v0.4.0 does not scale them
+# to a smaller physical display, so a 15.5" 1080p laptop shows a smaller
+# cluster. See docs/windows-test-notes.md § "Display scale".
 CELL = 1.0
 GRID = 16
 STRAIGHT_BIAS = 0.78
@@ -980,11 +979,10 @@ class PipesWidget(QOpenGLWidget):
 
         w = max(1, self.width())
         h = max(1, self.height())
-        # Fedora-authored framing (56° FOV, dist*1.08). Same fraction of the
-        # window on every resolution, so a small laptop looks tiny. Scale
-        # dist / FOV from Fedora's physical display — not from widget size
-        # (the settings preview is supposed to be small).
-        # See docs/windows-test-notes.md § "Display scale (Fedora)".
+        # Fedora-authored framing (56° FOV, dist*1.08). v0.4.0 keeps this on
+        # every display, so a small laptop shows a smaller cluster. The
+        # settings preview stays small on purpose.
+        # See docs/windows-test-notes.md § "Display scale".
         half = GRID * CELL * 0.58
         v_fov = math.radians(56.0)
         dist = (half / math.tan(v_fov / 2.0)) * 1.08
