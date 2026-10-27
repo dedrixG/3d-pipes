@@ -4,6 +4,10 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
+*.pem
+id_rsa
+id_ed25519
 .idea/
 .vscode/
 *.log
